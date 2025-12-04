@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import './App.css'
 
 interface Bookmark {
   id: string
@@ -24,7 +23,7 @@ interface XUser {
 
 function App() {
   const [bearerToken, setBearerToken] = useState('')
-  const [username, setUsername] = useState('gauri__gupta')
+  const [username, setUsername] = useState('Abhiram2k03')
   const [maxBookmarks, setMaxBookmarks] = useState(10)
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
   const [loading, setLoading] = useState(false)

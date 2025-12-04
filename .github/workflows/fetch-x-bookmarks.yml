@@ -31,7 +31,7 @@ jobs:
       - name: Fetch X bookmarks
         env:
           X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
-          X_USERNAME: ${{ secrets.X_USERNAME || '@Abhiram2k03' }}
+          X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}
           MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '5' }}
         run: npm run fetch-x-bookmarks
 
