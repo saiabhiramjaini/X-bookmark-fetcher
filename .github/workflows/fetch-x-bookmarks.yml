@@ -54,10 +54,22 @@ jobs:
           else
             echo "✅ X_OAUTH2_ACCESS_TOKEN is set"
           fi
+          if [ -z "${{ secrets.X_OAUTH2_REFRESH_TOKEN }}" ]; then
+            echo "⚠️ Warning: X_OAUTH2_REFRESH_TOKEN is not set!"
+          else
+            echo "✅ X_OAUTH2_REFRESH_TOKEN is set"
+          fi
+          if [ -z "${{ secrets.X_CLIENT_ID }}" ]; then
+            echo "⚠️ Warning: X_CLIENT_ID is not set!"
+          else
+            echo "✅ X_CLIENT_ID is set"
+          fi
 
       - name: Fetch X bookmarks
         env:
           X_OAUTH2_ACCESS_TOKEN: ${{ secrets.X_OAUTH2_ACCESS_TOKEN }}
+          X_OAUTH2_REFRESH_TOKEN: ${{ secrets.X_OAUTH2_REFRESH_TOKEN }}
+          X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
           X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}
           MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '10' }}
           DEBUG: 'true'
