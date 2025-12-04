@@ -19,6 +19,7 @@ const __dirname = dirname(__filename);
 let X_OAUTH2_ACCESS_TOKEN = process.env.X_OAUTH2_ACCESS_TOKEN;
 const X_OAUTH2_REFRESH_TOKEN = process.env.X_OAUTH2_REFRESH_TOKEN;
 const X_CLIENT_ID = process.env.X_CLIENT_ID;
+const X_CLIENT_SECRET = process.env.X_CLIENT_SECRET;
 const X_USERNAME = process.env.X_USERNAME || 'Abhiram2k03';
 const MAX_BOOKMARKS = parseInt(process.env.MAX_BOOKMARKS || '10');
 const DEBUG = process.env.DEBUG === 'true';
@@ -32,6 +33,12 @@ if (!X_OAUTH2_ACCESS_TOKEN || !X_OAUTH2_REFRESH_TOKEN) {
 
 if (!X_CLIENT_ID) {
   console.error('❌ Error: X_CLIENT_ID is not set in .env file');
+  process.exit(1);
+}
+
+if (!X_CLIENT_SECRET) {
+  console.error('❌ Error: X_CLIENT_SECRET is not set in .env file');
+  console.error('This is required for refreshing access tokens');
   process.exit(1);
 }
 
@@ -56,14 +63,17 @@ async function refreshAccessToken() {
   const params = new URLSearchParams({
     refresh_token: X_OAUTH2_REFRESH_TOKEN,
     grant_type: 'refresh_token',
-    client_id: X_CLIENT_ID,
   });
+
+  // Create Basic Auth header with client_id:client_secret
+  const credentials = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString('base64');
 
   try {
     const response = await fetch('https://api.x.com/2/oauth2/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`,
       },
       body: params.toString(),
     });
