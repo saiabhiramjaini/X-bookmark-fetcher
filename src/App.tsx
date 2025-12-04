@@ -13,7 +13,7 @@ interface Post {
 function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-
+ 
   useEffect(() => {
     // Try to load posts from the data file
     const loadPosts = async () => {
