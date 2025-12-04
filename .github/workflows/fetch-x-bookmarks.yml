@@ -1,4 +1,4 @@
-name: Fetch X Bookmarks
+name: Fetch X Liked Tweets
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write # Required to commit and push changes
 
 jobs:
-  fetch-bookmarks:
+  fetch-liked-tweets:
     runs-on: ubuntu-latest
     
     steps:
@@ -70,7 +70,7 @@ jobs:
             echo "✅ X_ACCESS_TOKEN_SECRET is set"
           fi
 
-      - name: Fetch X bookmarks
+      - name: Fetch X liked tweets
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
@@ -80,7 +80,7 @@ jobs:
           MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '5' }}
           DEBUG: 'true'
         run: |
-          echo "Starting X bookmarks fetch..."
+          echo "Starting X liked tweets fetch..."
           npm run fetch-x-bookmarks
           echo "Fetch completed"
 
@@ -118,7 +118,7 @@ jobs:
           echo "Files added:"
           git diff --cached --stat
           echo "Committing changes..."
-          git commit -m "chore: add blog posts from X bookmarks [skip ci]"
+          git commit -m "chore: add blog posts from X liked tweets [skip ci]"
           echo "Pushing to remote..."
           git push
           echo "✅ Successfully pushed changes"

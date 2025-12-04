@@ -1,20 +1,27 @@
 #!/usr/bin/env node
 
 /**
- * Script to fetch X bookmarks and convert them to blog posts
+ * Script to fetch X liked tweets and convert them to blog posts
  * Runs via GitHub Actions or manually
  * 
- * REQUIRES OAuth 1.0a credentials (not Bearer Token):
+ * Note: Changed from bookmarks to likes because X Bookmarks API
+ * requires OAuth 2.0 (not automatable). Likes API works with OAuth 1.0a.
+ * 
+ * REQUIRES OAuth 1.0a credentials:
  * - X_API_KEY (Consumer Key)
  * - X_API_SECRET (Consumer Secret)
  * - X_ACCESS_TOKEN
  * - X_ACCESS_TOKEN_SECRET
  */
 
+import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { createHmac } from 'crypto';
+
+// Load environment variables from .env file
+config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -154,10 +161,10 @@ async function getUserIdFromUsername(username) {
 }
 
 /**
- * Fetch X bookmarks for a user
+ * Fetch X liked tweets for a user
  */
-async function fetchXBookmarks(userId, maxResults = 10) {
-  const url = `https://api.x.com/2/users/${userId}/bookmarks`;
+async function fetchXLikedTweets(userId, maxResults = 10) {
+  const url = `https://api.x.com/2/users/${userId}/liked_tweets`;
   const queryParams = {
     max_results: maxResults.toString(),
     'tweet.fields': 'created_at,author_id,public_metrics,text,attachments',
@@ -167,7 +174,7 @@ async function fetchXBookmarks(userId, maxResults = 10) {
   };
 
   if (DEBUG) {
-    console.log('\n🔍 Fetching bookmarks...');
+    console.log('\n🔍 Fetching liked tweets...');
     console.log('  User ID:', userId);
     console.log('  Max Results:', maxResults);
     console.log('  URL:', url);
@@ -195,18 +202,18 @@ async function fetchXBookmarks(userId, maxResults = 10) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('\n❌ Failed to fetch bookmarks');
+    console.error('\n❌ Failed to fetch liked tweets');
     console.error('  Status:', response.status);
     console.error('  Error:', JSON.stringify(error, null, 2));
     throw new Error(
-      `Failed to fetch X bookmarks: ${response.status} ${JSON.stringify(error)}`
+      `Failed to fetch X liked tweets: ${response.status} ${JSON.stringify(error)}`
     );
   }
 
   const data = await response.json();
 
   if (DEBUG) {
-    console.log('  Bookmarks found:', data.data?.length || 0);
+    console.log('  Liked tweets found:', data.data?.length || 0);
     console.log('  Users included:', data.includes?.users?.length || 0);
     console.log('  Media included:', data.includes?.media?.length || 0);
   }
@@ -217,7 +224,7 @@ async function fetchXBookmarks(userId, maxResults = 10) {
       data.includes.users.map((user) => [user.id, user])
     );
     if (DEBUG) {
-      console.log('  Enriching bookmarks with author data...');
+      console.log('  Enriching liked tweets with author data...');
     }
     data.data = data.data.map((tweet) => ({
       ...tweet,
@@ -242,9 +249,9 @@ function generateSlug(text) {
 }
 
 /**
- * Convert bookmark to blog post markdown
+ * Convert liked tweet to blog post markdown
  */
-function bookmarkToMarkdown(bookmark) {
+function likedTweetToMarkdown(bookmark) {
   const date = new Date(bookmark.created_at);
   const formattedDate = date.toLocaleDateString('en-US', {
     month: 'long',
@@ -289,30 +296,30 @@ ${text}
  */
 async function main() {
   try {
-    console.log('🚀 Fetching X bookmarks...');
+    console.log('🚀 Fetching X liked tweets...');
     console.log(`📝 Username: ${X_USERNAME}`);
-    console.log(`📊 Max bookmarks: ${MAX_BOOKMARKS}`);
+    console.log(`📊 Max liked tweets: ${MAX_BOOKMARKS}`);
 
     // Get user ID
     const userId = await getUserIdFromUsername(X_USERNAME);
     console.log(`✅ Found user ID: ${userId}`);
 
-    // Fetch bookmarks
-    const bookmarksData = await fetchXBookmarks(
+    // Fetch liked tweets
+    const likesData = await fetchXLikedTweets(
       userId,
       MAX_BOOKMARKS
     );
 
-    if (!bookmarksData.data || bookmarksData.data.length === 0) {
-      console.log('ℹ️  No bookmarks found');
+    if (!likesData.data || likesData.data.length === 0) {
+      console.log('ℹ️  No liked tweets found');
       return;
     }
 
-    console.log(`✅ Fetched ${bookmarksData.data.length} bookmarks`);
+    console.log(`✅ Fetched ${likesData.data.length} liked tweets`);
 
     if (DEBUG) {
-      console.log('\n📋 Bookmark details:');
-      bookmarksData.data.forEach((bookmark, index) => {
+      console.log('\n📋 Liked tweet details:');
+      likesData.data.forEach((bookmark, index) => {
         console.log(`  ${index + 1}. ID: ${bookmark.id}`);
         console.log(`     Author: ${bookmark.author_name} (@${bookmark.author_username})`);
         console.log(`     Text: ${bookmark.text.substring(0, 50)}...`);
@@ -359,12 +366,12 @@ async function main() {
       }
     }
 
-    // Generate blog posts from bookmarks
+    // Generate blog posts from liked tweets
     const newPosts = [];
-    console.log('\n📝 Processing bookmarks...');
+    console.log('\n📝 Processing liked tweets...');
     
-    for (const bookmark of bookmarksData.data) {
-      const slug = `x-bookmark-${bookmark.id}`;
+    for (const bookmark of likesData.data) {
+      const slug = `x-liked-${bookmark.id}`;
       
       // Skip if already exists
       if (existingPosts.has(slug)) {
@@ -378,7 +385,7 @@ async function main() {
         console.log(`    Text length: ${bookmark.text.length} chars`);
       }
 
-      const markdown = bookmarkToMarkdown(bookmark);
+      const markdown = likedTweetToMarkdown(bookmark);
       const mdPath = join(postsDir, `${slug}.md`);
       
       writeFileSync(mdPath, markdown, 'utf-8');
@@ -403,7 +410,7 @@ async function main() {
         title: firstLine,
         date: monthYear,
         author: bookmark.author_name || bookmark.author_username || 'Unknown',
-        categories: ['X Bookmark', 'Curated'],
+        categories: ['X Liked', 'Curated'],
         excerpt: excerpt,
       });
     }
@@ -411,7 +418,7 @@ async function main() {
     if (newPosts.length === 0) {
       console.log('ℹ️  No new posts to add');
       if (DEBUG) {
-        console.log('  All bookmarks already exist in posts.ts');
+        console.log('  All liked tweets already exist in posts.ts');
       }
       return;
     }
@@ -473,7 +480,7 @@ async function main() {
       }
     }
 
-    console.log(`\n🎉 Successfully created ${newPosts.length} new blog posts from X bookmarks!`);
+    console.log(`\n🎉 Successfully created ${newPosts.length} new blog posts from X liked tweets!`);
     
   } catch (error) {
     console.error('\n❌ ERROR OCCURRED');

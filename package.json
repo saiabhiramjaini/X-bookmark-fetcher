@@ -8,9 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "fetch-x-bookmarks": "node scripts/fetch-x-bookmarks.mjs"
+    "fetch-x-bookmarks": "node scripts/fetch-x-bookmarks.mjs",
+    "fetch-bookmarks": "node scripts/fetch-bookmarks-oauth2.mjs",
+    "get-oauth2-token": "node scripts/get-oauth2-token.mjs"
   },
   "dependencies": {
+    "dotenv": "^17.2.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

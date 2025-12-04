@@ -44,13 +44,13 @@ function App() {
         borderRadius: '8px',
         borderLeft: '4px solid #1DA1F2'
       }}>
-        <h3 style={{ marginTop: 0, color: '#1976d2' }}>🤖 Automated Bookmark Fetching</h3>
+        <h3 style={{ marginTop: 0, color: '#1976d2' }}>🤖 Automated Bookmarks Fetching</h3>
         <p>This site displays X (Twitter) bookmarks automatically fetched via GitHub Actions.</p>
         <ul style={{ marginBottom: 0 }}>
           <li>✅ Runs on every push to main branch</li>
           <li>✅ Runs daily at 9:00 AM UTC</li>
           <li>✅ Uses OAuth 1.0a authentication</li>
-          <li>✅ Converts bookmarks to blog posts</li>
+          <li>✅ Converts liked tweets to blog posts</li>
         </ul>
       </div>
 
@@ -68,7 +68,7 @@ function App() {
         }}>
           <h2 style={{ color: '#856404' }}>📭 No Posts Yet</h2>
           <p style={{ color: '#856404' }}>
-            Bookmarks will appear here once the GitHub Actions workflow runs successfully.
+            Liked tweets will appear here once the GitHub Actions workflow runs successfully.
           </p>
           <div style={{ marginTop: '1.5rem', textAlign: 'left', maxWidth: '600px', margin: '1.5rem auto 0' }}>
             <p><strong>Next steps:</strong></p>
@@ -76,7 +76,7 @@ function App() {
               <li>Make sure you've added all OAuth secrets to GitHub</li>
               <li>Push any change to trigger the workflow</li>
               <li>Check the Actions tab in your GitHub repo for progress</li>
-              <li>Posts will appear here automatically after successful fetch</li>
+              <li>Liked tweets will appear here automatically after successful fetch</li>
             </ol>
           </div>
         </div>

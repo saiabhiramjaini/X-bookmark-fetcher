@@ -1,11 +1,13 @@
-# X Bookmarks Fetcher
+# X Liked Tweets Fetcher
 
-A React app with GitHub Actions automation to fetch and display X (Twitter) bookmarked posts.
+A React app with GitHub Actions automation to fetch and display X (Twitter) liked tweets.
+
+> **Note:** Originally designed for bookmarks, but X's Bookmarks API requires OAuth 2.0 which cannot be automated. This version fetches **liked tweets** instead, which works perfectly with OAuth 1.0a automation!
 
 ## 🚀 Features
 
-- Automatically fetches X bookmarks via GitHub Actions
-- Converts bookmarks to markdown blog posts
+- Automatically fetches X liked tweets via GitHub Actions
+- Converts liked tweets to markdown blog posts
 - Runs on schedule or on every push to main
 - Full debugging and error tracking
 
@@ -13,7 +15,7 @@ A React app with GitHub Actions automation to fetch and display X (Twitter) book
 
 ### 1. OAuth 1.0a Credentials Required
 
-The X Bookmarks API requires OAuth 1.0a authentication (not Bearer Token). See **[OAUTH_SETUP.md](./OAUTH_SETUP.md)** for detailed instructions on:
+The X Liked Tweets API works with OAuth 1.0a authentication. See **[OAUTH_SETUP.md](./OAUTH_SETUP.md)** for detailed instructions on:
 - Creating a X Developer account
 - Getting your OAuth credentials
 - Setting up GitHub Secrets
