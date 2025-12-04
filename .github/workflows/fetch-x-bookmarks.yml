@@ -1,4 +1,4 @@
-name: Fetch X Liked Tweets
+name: Fetch X Bookmarks
 
 on:
   push:
@@ -13,7 +13,7 @@ permissions:
   contents: write # Required to commit and push changes
 
 jobs:
-  fetch-liked-tweets:
+  fetch-bookmarks:
     runs-on: ubuntu-latest
     
     steps:
@@ -48,40 +48,22 @@ jobs:
         run: |
           echo "Checking environment variables..."
           echo "X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}"
-          echo "MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '5' }}"
-          if [ -z "${{ secrets.X_API_KEY }}" ]; then
-            echo "⚠️ Warning: X_API_KEY is not set!"
+          echo "MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '10' }}"
+          if [ -z "${{ secrets.X_OAUTH2_ACCESS_TOKEN }}" ]; then
+            echo "⚠️ Warning: X_OAUTH2_ACCESS_TOKEN is not set!"
           else
-            echo "✅ X_API_KEY is set"
-          fi
-          if [ -z "${{ secrets.X_API_SECRET }}" ]; then
-            echo "⚠️ Warning: X_API_SECRET is not set!"
-          else
-            echo "✅ X_API_SECRET is set"
-          fi
-          if [ -z "${{ secrets.X_ACCESS_TOKEN }}" ]; then
-            echo "⚠️ Warning: X_ACCESS_TOKEN is not set!"
-          else
-            echo "✅ X_ACCESS_TOKEN is set"
-          fi
-          if [ -z "${{ secrets.X_ACCESS_TOKEN_SECRET }}" ]; then
-            echo "⚠️ Warning: X_ACCESS_TOKEN_SECRET is not set!"
-          else
-            echo "✅ X_ACCESS_TOKEN_SECRET is set"
+            echo "✅ X_OAUTH2_ACCESS_TOKEN is set"
           fi
 
-      - name: Fetch X liked tweets
+      - name: Fetch X bookmarks
         env:
-          X_API_KEY: ${{ secrets.X_API_KEY }}
-          X_API_SECRET: ${{ secrets.X_API_SECRET }}
-          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+          X_OAUTH2_ACCESS_TOKEN: ${{ secrets.X_OAUTH2_ACCESS_TOKEN }}
           X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}
-          MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '5' }}
+          MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '10' }}
           DEBUG: 'true'
         run: |
-          echo "Starting X liked tweets fetch..."
-          npm run fetch-x-bookmarks
+          echo "Starting X bookmarks fetch..."
+          npm run fetch-bookmarks
           echo "Fetch completed"
 
       - name: Debug - Show generated files
@@ -118,7 +100,7 @@ jobs:
           echo "Files added:"
           git diff --cached --stat
           echo "Committing changes..."
-          git commit -m "chore: add blog posts from X liked tweets [skip ci]"
+          git commit -m "chore: add blog posts from X bookmarks [skip ci]"
           echo "Pushing to remote..."
           git push
           echo "✅ Successfully pushed changes"
@@ -130,6 +112,5 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Username**: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Max Bookmarks**: ${{ secrets.MAX_BOOKMARKS || '5' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Max Bookmarks**: ${{ secrets.MAX_BOOKMARKS || '10' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Changes Detected**: ${{ steps.git-check.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
-
