@@ -3,17 +3,27 @@
 /**
  * Script to fetch X bookmarks and convert them to blog posts
  * Runs via GitHub Actions or manually
+ * 
+ * REQUIRES OAuth 1.0a credentials (not Bearer Token):
+ * - X_API_KEY (Consumer Key)
+ * - X_API_SECRET (Consumer Secret)
+ * - X_ACCESS_TOKEN
+ * - X_ACCESS_TOKEN_SECRET
  */
 
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { createHmac } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Configuration from environment variables
-const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN;
+const X_API_KEY = process.env.X_API_KEY;
+const X_API_SECRET = process.env.X_API_SECRET;
+const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
+const X_ACCESS_TOKEN_SECRET = process.env.X_ACCESS_TOKEN_SECRET;
 const X_USERNAME = process.env.X_USERNAME || 'gauri__gupta';
 const MAX_BOOKMARKS = parseInt(process.env.MAX_BOOKMARKS || '10');
 const DEBUG = process.env.DEBUG === 'true';
@@ -24,33 +34,100 @@ if (DEBUG) {
   console.log('Environment Configuration:');
   console.log('  X_USERNAME:', X_USERNAME);
   console.log('  MAX_BOOKMARKS:', MAX_BOOKMARKS);
-  console.log('  X_BEARER_TOKEN:', X_BEARER_TOKEN ? `Set (${X_BEARER_TOKEN.length} chars)` : 'NOT SET');
+  console.log('  X_API_KEY:', X_API_KEY ? `Set (${X_API_KEY.length} chars)` : 'NOT SET');
+  console.log('  X_API_SECRET:', X_API_SECRET ? 'Set' : 'NOT SET');
+  console.log('  X_ACCESS_TOKEN:', X_ACCESS_TOKEN ? `Set (${X_ACCESS_TOKEN.length} chars)` : 'NOT SET');
+  console.log('  X_ACCESS_TOKEN_SECRET:', X_ACCESS_TOKEN_SECRET ? 'Set' : 'NOT SET');
   console.log('  Working Directory:', process.cwd());
   console.log('═══════════════════════════════════════\n');
 }
 
-if (!X_BEARER_TOKEN) {
-  console.error('❌ Error: X_BEARER_TOKEN is not set');
-  console.error('Please set X_BEARER_TOKEN environment variable or add it to .env file');
+if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_TOKEN_SECRET) {
+  console.error('❌ Error: OAuth 1.0a credentials not set');
+  console.error('Please set the following environment variables:');
+  console.error('  - X_API_KEY (Consumer Key)');
+  console.error('  - X_API_SECRET (Consumer Secret)');
+  console.error('  - X_ACCESS_TOKEN');
+  console.error('  - X_ACCESS_TOKEN_SECRET');
+  console.error('\nNote: Bearer Token is NOT supported for bookmarks endpoint.');
+  console.error('You need OAuth 1.0a User Context authentication.');
   process.exit(1);
+}
+
+/**
+ * Generate OAuth 1.0a signature
+ */
+function generateOAuthSignature(method, url, params, consumerSecret, tokenSecret) {
+  // Sort parameters
+  const sortedParams = Object.keys(params)
+    .sort()
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+
+  // Create signature base string
+  const signatureBaseString = `${method}&${encodeURIComponent(url)}&${encodeURIComponent(sortedParams)}`;
+
+  // Create signing key
+  const signingKey = `${encodeURIComponent(consumerSecret)}&${encodeURIComponent(tokenSecret)}`;
+
+  // Generate signature
+  const signature = createHmac('sha1', signingKey)
+    .update(signatureBaseString)
+    .digest('base64');
+
+  return signature;
+}
+
+/**
+ * Create OAuth 1.0a Authorization header
+ */
+function createOAuthHeader(method, url, queryParams = {}) {
+  const oauthParams = {
+    oauth_consumer_key: X_API_KEY,
+    oauth_token: X_ACCESS_TOKEN,
+    oauth_signature_method: 'HMAC-SHA1',
+    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_nonce: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+    oauth_version: '1.0',
+  };
+
+  // Combine OAuth params with query params for signature
+  const allParams = { ...oauthParams, ...queryParams };
+
+  // Generate signature
+  const signature = generateOAuthSignature(method, url, allParams, X_API_SECRET, X_ACCESS_TOKEN_SECRET);
+  oauthParams.oauth_signature = signature;
+
+  // Create authorization header
+  const authHeader = 'OAuth ' + Object.keys(oauthParams)
+    .sort()
+    .map(key => `${encodeURIComponent(key)}="${encodeURIComponent(oauthParams[key])}"`)
+    .join(', ');
+
+  return authHeader;
 }
 
 /**
  * Fetch user ID from username
  */
-async function getUserIdFromUsername(bearerToken, username) {
-  const url = new URL(`https://api.x.com/2/users/by/username/${username}`);
-  url.searchParams.append('user.fields', 'id');
+async function getUserIdFromUsername(username) {
+  const url = `https://api.x.com/2/users/by/username/${username}`;
+  const queryParams = { 'user.fields': 'id' };
 
   if (DEBUG) {
     console.log('\n🔍 Fetching user ID...');
-    console.log('  URL:', url.toString());
+    console.log('  URL:', url);
   }
 
-  const response = await fetch(url.toString(), {
+  const authHeader = createOAuthHeader('GET', url, queryParams);
+
+  const fullUrl = new URL(url);
+  fullUrl.searchParams.append('user.fields', 'id');
+
+  const response = await fetch(fullUrl.toString(), {
     method: 'GET',
     headers: {
-      Authorization: `Bearer ${bearerToken}`,
+      Authorization: authHeader,
       'Content-Type': 'application/json',
     },
   });
@@ -79,28 +156,34 @@ async function getUserIdFromUsername(bearerToken, username) {
 /**
  * Fetch X bookmarks for a user
  */
-async function fetchXBookmarks(bearerToken, userId, maxResults = 10) {
-  const url = new URL(`https://api.x.com/2/users/${userId}/bookmarks`);
-  url.searchParams.append('max_results', maxResults.toString());
-  url.searchParams.append(
-    'tweet.fields',
-    'created_at,author_id,public_metrics,text,attachments'
-  );
-  url.searchParams.append('user.fields', 'username,name');
-  url.searchParams.append('expansions', 'author_id,attachments.media_keys');
-  url.searchParams.append('media.fields', 'url,preview_image_url,type');
+async function fetchXBookmarks(userId, maxResults = 10) {
+  const url = `https://api.x.com/2/users/${userId}/bookmarks`;
+  const queryParams = {
+    max_results: maxResults.toString(),
+    'tweet.fields': 'created_at,author_id,public_metrics,text,attachments',
+    'user.fields': 'username,name',
+    expansions: 'author_id,attachments.media_keys',
+    'media.fields': 'url,preview_image_url,type',
+  };
 
   if (DEBUG) {
     console.log('\n🔍 Fetching bookmarks...');
     console.log('  User ID:', userId);
     console.log('  Max Results:', maxResults);
-    console.log('  URL:', url.toString());
+    console.log('  URL:', url);
   }
 
-  const response = await fetch(url.toString(), {
+  const authHeader = createOAuthHeader('GET', url, queryParams);
+
+  const fullUrl = new URL(url);
+  Object.entries(queryParams).forEach(([key, value]) => {
+    fullUrl.searchParams.append(key, value);
+  });
+
+  const response = await fetch(fullUrl.toString(), {
     method: 'GET',
     headers: {
-      Authorization: `Bearer ${bearerToken}`,
+      Authorization: authHeader,
       'Content-Type': 'application/json',
     },
   });
@@ -211,12 +294,11 @@ async function main() {
     console.log(`📊 Max bookmarks: ${MAX_BOOKMARKS}`);
 
     // Get user ID
-    const userId = await getUserIdFromUsername(X_BEARER_TOKEN, X_USERNAME);
+    const userId = await getUserIdFromUsername(X_USERNAME);
     console.log(`✅ Found user ID: ${userId}`);
 
     // Fetch bookmarks
     const bookmarksData = await fetchXBookmarks(
-      X_BEARER_TOKEN,
       userId,
       MAX_BOOKMARKS
     );

@@ -30,6 +30,12 @@ function App() {
   const [error, setError] = useState('')
 
   const fetchBookmarks = async () => {
+    setError('⚠️ Browser-based fetching is not supported for X bookmarks. The X API requires OAuth 1.0a User Context authentication which cannot be implemented securely in a browser. Please use the GitHub Actions workflow or run the script locally with proper OAuth credentials.')
+    return
+
+    // Note: The code below will not work because X bookmarks endpoint requires OAuth 1.0a
+    // which cannot be implemented in a browser due to security constraints (consumer secret exposure)
+    
     if (!bearerToken) {
       setError('Please enter your X Bearer Token')
       return
