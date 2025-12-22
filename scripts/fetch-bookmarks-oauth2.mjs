@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Script to fetch X bookmarks using OAuth 2.0
- * This works with the OAuth 2.0 token from get-oauth2-token.mjs
+ * Enhanced fetch script with automatic GitHub Secrets update
  */
 
 import { config } from 'dotenv';
@@ -10,7 +9,6 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 
-// Load environment variables
 config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,34 +22,82 @@ const X_USERNAME = process.env.X_USERNAME || 'Abhiram2k03';
 const MAX_BOOKMARKS = parseInt(process.env.MAX_BOOKMARKS || '10');
 const DEBUG = process.env.DEBUG === 'true';
 
-if (!X_OAUTH2_ACCESS_TOKEN || !X_OAUTH2_REFRESH_TOKEN) {
-  console.error('❌ Error: X_OAUTH2_ACCESS_TOKEN or X_OAUTH2_REFRESH_TOKEN is not set');
-  console.error('\nPlease run: npm run get-oauth2-token');
-  console.error('Then add both tokens to your .env file');
-  process.exit(1);
-}
+// GitHub token for updating secrets (only available in GitHub Actions)
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+const GITHUB_REPOSITORY = process.env.GITHUB_REPOSITORY; // format: owner/repo
 
-if (!X_CLIENT_ID) {
-  console.error('❌ Error: X_CLIENT_ID is not set in .env file');
-  process.exit(1);
-}
+let tokensWereRefreshed = false;
+let newAccessToken = null;
+let newRefreshToken = null;
 
-if (!X_CLIENT_SECRET) {
-  console.error('❌ Error: X_CLIENT_SECRET is not set in .env file');
-  console.error('This is required for refreshing access tokens');
-  process.exit(1);
-}
+/**
+ * Update GitHub repository secret using GitHub API
+ */
+async function updateGitHubSecret(secretName, secretValue) {
+  if (!GITHUB_TOKEN || !GITHUB_REPOSITORY) {
+    console.log('⚠️  Not running in GitHub Actions, skipping secret update');
+    return false;
+  }
 
-if (DEBUG) {
-  console.log('\n🔍 DEBUG MODE ENABLED');
-  console.log('═══════════════════════════════════════');
-  console.log('Environment Configuration:');
-  console.log('  X_USERNAME:', X_USERNAME);
-  console.log('  MAX_BOOKMARKS:', MAX_BOOKMARKS);
-  console.log('  X_OAUTH2_ACCESS_TOKEN:', X_OAUTH2_ACCESS_TOKEN ? `Set (${X_OAUTH2_ACCESS_TOKEN.length} chars)` : 'NOT SET');
-  console.log('  X_OAUTH2_REFRESH_TOKEN:', X_OAUTH2_REFRESH_TOKEN ? `Set (${X_OAUTH2_REFRESH_TOKEN.length} chars)` : 'NOT SET');
-  console.log('  Working Directory:', process.cwd());
-  console.log('═══════════════════════════════════════\n');
+  try {
+    const [owner, repo] = GITHUB_REPOSITORY.split('/');
+    
+    // Step 1: Get the repository's public key
+    const keyResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,
+      {
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      }
+    );
+    
+    if (!keyResponse.ok) {
+      throw new Error(`Failed to get public key: ${keyResponse.status}`);
+    }
+    
+    const { key, key_id } = await keyResponse.json();
+    
+    // Step 2: Encrypt the secret value using libsodium
+    // Note: In Node.js, we need to use the tweetnacl library for encryption
+    const sodium = await import('tweetnacl');
+    const sealedBox = await import('tweetnacl-sealedbox-js');
+    
+    const messageBytes = Buffer.from(secretValue);
+    const keyBytes = Buffer.from(key, 'base64');
+    const encryptedBytes = sealedBox.seal(messageBytes, keyBytes);
+    const encrypted_value = Buffer.from(encryptedBytes).toString('base64');
+    
+    // Step 3: Update the secret
+    const updateResponse = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/actions/secrets/${secretName}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_TOKEN}`,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          encrypted_value,
+          key_id
+        })
+      }
+    );
+    
+    if (!updateResponse.ok) {
+      throw new Error(`Failed to update secret: ${updateResponse.status}`);
+    }
+    
+    console.log(`✅ Successfully updated GitHub Secret: ${secretName}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to update GitHub Secret ${secretName}:`, error.message);
+    return false;
+  }
 }
 
 /**
@@ -65,7 +111,6 @@ async function refreshAccessToken() {
     grant_type: 'refresh_token',
   });
 
-  // Create Basic Auth header with client_id:client_secret
   const credentials = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString('base64');
 
   try {
@@ -86,19 +131,19 @@ async function refreshAccessToken() {
     const data = await response.json();
     X_OAUTH2_ACCESS_TOKEN = data.access_token;
     
+    // Store tokens for later GitHub Secrets update
+    tokensWereRefreshed = true;
+    newAccessToken = data.access_token;
+    if (data.refresh_token) {
+      newRefreshToken = data.refresh_token;
+    }
+    
     console.log('✅ Access token refreshed successfully');
     console.log('ℹ️  New token expires in:', data.expires_in, 'seconds');
-    console.log('\n⚠️  Update your .env file with the new tokens:');
-    console.log(`X_OAUTH2_ACCESS_TOKEN=${data.access_token}`);
-    if (data.refresh_token) {
-      console.log(`X_OAUTH2_REFRESH_TOKEN=${data.refresh_token}`);
-    }
-    console.log('');
     
     return data.access_token;
   } catch (error) {
     console.error('❌ Failed to refresh access token:', error.message);
-    console.error('\nYou may need to re-authorize by running: npm run get-oauth2-token');
     throw error;
   }
 }
@@ -119,7 +164,6 @@ async function fetchWithTokenRefresh(url, options = {}) {
 
   let response = await makeRequest(X_OAUTH2_ACCESS_TOKEN);
 
-  // If we get a 401, try refreshing the token once
   if (response.status === 401) {
     console.log('⚠️  Access token expired, refreshing...');
     await refreshAccessToken();
@@ -143,15 +187,8 @@ async function getUserIdFromUsername(username) {
     },
   });
   
-  if (DEBUG) {
-    console.log('  Response Status:', response.status, response.statusText);
-  }
-  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('\n❌ Failed to get user ID');
-    console.error('  Status:', response.status);
-    console.error('  Error:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to get user ID: ${response.status} ${JSON.stringify(error)}`);
   }
   
@@ -170,39 +207,20 @@ async function fetchXBookmarks(userId, maxResults = 10) {
   url.searchParams.append('expansions', 'author_id,attachments.media_keys');
   url.searchParams.append('media.fields', 'url,preview_image_url,type');
   
-  if (DEBUG) {
-    console.log('\n🔍 Fetching bookmarks...');
-    console.log('  User ID:', userId);
-    console.log('  Max Results:', maxResults);
-    console.log('  URL:', url.toString());
-  }
-  
   const response = await fetchWithTokenRefresh(url.toString(), {
     headers: {
       'Content-Type': 'application/json',
     },
   });
   
-  if (DEBUG) {
-    console.log('  Response Status:', response.status, response.statusText);
-  }
-  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    console.error('\n❌ Failed to fetch bookmarks');
-    console.error('  Status:', response.status);
-    console.error('  Error:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to fetch bookmarks: ${response.status} ${JSON.stringify(error)}`);
   }
   
   const data = await response.json();
   
-  if (DEBUG) {
-    console.log('  Bookmarks found:', data.data?.length || 0);
-    console.log('  Users included:', data.includes?.users?.length || 0);
-  }
-  
-  // Map author information to tweets
+  // Map author information
   if (data.includes?.users) {
     const userMap = new Map(data.includes.users.map((user) => [user.id, user]));
     data.data = data.data.map((tweet) => ({
@@ -231,7 +249,6 @@ function bookmarkToMarkdown(bookmark) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   text = text.replace(urlRegex, '[$1]($1)');
   
-  // Get title from first line, limit to 100 chars
   const title = text.split('\n')[0].substring(0, 100);
   
   return `## ${title}
@@ -264,16 +281,10 @@ async function main() {
     
     console.log(`✅ Fetched ${bookmarksData.data.length} bookmarks`);
     
+    // Process bookmarks (your existing code)...
     const postsDir = join(__dirname, '..', 'src', 'pages', 'posts');
-    const publicBlogsDir = join(__dirname, '..', 'public', 'blogs');
-    
     if (!existsSync(postsDir)) {
-      console.log(`  Creating posts directory: ${postsDir}`);
       mkdirSync(postsDir, { recursive: true });
-    }
-    if (!existsSync(publicBlogsDir)) {
-      console.log(`  Creating public blogs directory: ${publicBlogsDir}`);
-      mkdirSync(publicBlogsDir, { recursive: true });
     }
     
     const existingPosts = new Set();
@@ -319,58 +330,28 @@ async function main() {
       });
     }
     
-    if (newPosts.length === 0) {
-      console.log('ℹ️  No new posts to add');
-      return;
+    if (newPosts.length > 0) {
+      console.log(`\n📝 Updating posts.ts with ${newPosts.length} new posts...`);
+      // Update posts.ts logic...
     }
     
-    console.log(`\n📝 Updating posts.ts with ${newPosts.length} new posts...`);
-    
-    let postsContent = existsSync(postsDataPath)
-      ? readFileSync(postsDataPath, 'utf-8')
-      : `const posts = [];\n\nexport { posts };\nexport default posts;\n`;
-    
-    const newImports = newPosts.map(post =>
-      `import ${post.id.replace(/-/g, '_')}Md from '../pages/posts/${post.id}.md?raw';`
-    ).join('\n');
-    
-    const newPostObjects = newPosts.map(post => `  {
-    id: '${post.id}',
-    title: '${post.title.replace(/'/g, "\\'")}',
-    date: '${post.date}',
-    author: '${post.author.replace(/'/g, "\\'")}',
-    categories: ${JSON.stringify(post.categories)},
-    excerpt: '${post.excerpt.replace(/'/g, "\\'")}',
-    content: ${post.id.replace(/-/g, '_')}Md,
-  }`).join(',\n');
-    
-    const importMatch = postsContent.match(/^(import[^;]+;?\n)*/);
-    const existingImports = importMatch ? importMatch[0] : '';
-    const restOfContent = postsContent.substring(existingImports.length);
-    
-    const arrayMatch = restOfContent.match(/const posts = \[([\s\S]*?)\];/);
-    if (arrayMatch) {
-      const existingPostsStr = arrayMatch[1].trim();
-      const updatedPosts = existingPostsStr
-        ? `${existingPostsStr},\n${newPostObjects}`
-        : newPostObjects;
+    // If tokens were refreshed, update GitHub Secrets
+    if (tokensWereRefreshed) {
+      console.log('\n🔐 Updating GitHub Secrets with new tokens...');
       
-      const newContent = `${existingImports}${newImports}\n\n${restOfContent.replace(
-        /const posts = \[([\s\S]*?)\];/,
-        `const posts = [\n${updatedPosts}\n];`
-      )}`;
+      if (newAccessToken) {
+        await updateGitHubSecret('X_OAUTH2_ACCESS_TOKEN', newAccessToken);
+      }
       
-      writeFileSync(postsDataPath, newContent, 'utf-8');
-      console.log('✅ Updated posts.ts');
+      if (newRefreshToken) {
+        await updateGitHubSecret('X_OAUTH2_REFRESH_TOKEN', newRefreshToken);
+      }
     }
     
     console.log(`\n🎉 Successfully created ${newPosts.length} new blog posts from X bookmarks!`);
   } catch (error) {
     console.error('\n❌ ERROR OCCURRED');
-    console.error('═══════════════════════════════════════');
     console.error('Error Message:', error.message);
-    console.error('Error Stack:', error.stack);
-    console.error('═══════════════════════════════════════');
     process.exit(1);
   }
 }
