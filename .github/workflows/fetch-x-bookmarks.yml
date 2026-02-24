@@ -47,17 +47,17 @@ jobs:
       - name: Debug - Verify secrets and config
         run: |
           echo "Checking environment variables..."
-          echo "X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}"
+          echo "X_USERNAME: ${{ secrets.X_USERNAME || 'gauri__gupta' }}"
           echo "MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '10' }}"
-          if [ -z "${{ secrets.X_OAUTH2_ACCESS_TOKEN }}" ]; then
-            echo "⚠️ Warning: X_OAUTH2_ACCESS_TOKEN is not set!"
+          if [ -z "${{ secrets.X_ACCESS_TOKEN }}" ]; then
+            echo "⚠️ Warning: X_ACCESS_TOKEN is not set!"
           else
-            echo "✅ X_OAUTH2_ACCESS_TOKEN is set"
+            echo "✅ X_ACCESS_TOKEN is set"
           fi
-          if [ -z "${{ secrets.X_OAUTH2_REFRESH_TOKEN }}" ]; then
-            echo "⚠️ Warning: X_OAUTH2_REFRESH_TOKEN is not set!"
+          if [ -z "${{ secrets.X_REFRESH_TOKEN }}" ]; then
+            echo "⚠️ Warning: X_REFRESH_TOKEN is not set!"
           else
-            echo "✅ X_OAUTH2_REFRESH_TOKEN is set"
+            echo "✅ X_REFRESH_TOKEN is set"
           fi
           if [ -z "${{ secrets.X_CLIENT_ID }}" ]; then
             echo "⚠️ Warning: X_CLIENT_ID is not set!"
@@ -71,18 +71,39 @@ jobs:
           fi
 
       - name: Fetch X bookmarks
+        id: fetch-bookmarks
         env:
-          X_OAUTH2_ACCESS_TOKEN: ${{ secrets.X_OAUTH2_ACCESS_TOKEN }}
-          X_OAUTH2_REFRESH_TOKEN: ${{ secrets.X_OAUTH2_REFRESH_TOKEN }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_REFRESH_TOKEN: ${{ secrets.X_REFRESH_TOKEN }}
           X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
           X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
-          X_USERNAME: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}
+          X_USERNAME: ${{ secrets.X_USERNAME || 'gauri__gupta' }}
           MAX_BOOKMARKS: ${{ secrets.MAX_BOOKMARKS || '10' }}
           DEBUG: 'true'
         run: |
           echo "Starting X bookmarks fetch..."
           npm run fetch-bookmarks
           echo "Fetch completed"
+
+      - name: Update GitHub Secrets
+        if: steps.fetch-bookmarks.outputs.refresh_token != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "⚠️ Warning: GH_PAT secret is not set!"
+            echo "Cannot automatically persist rotated tokens."
+            exit 1
+          fi
+          
+          echo "Updating Repository Secrets..."
+          
+          # Use GitHub CLI to set the secrets
+          echo "${{ steps.fetch-bookmarks.outputs.access_token }}" | gh secret set X_ACCESS_TOKEN -R $GITHUB_REPOSITORY
+          echo "${{ steps.fetch-bookmarks.outputs.refresh_token }}" | gh secret set X_REFRESH_TOKEN -R $GITHUB_REPOSITORY
+          
+          echo "✅ Rotated X OAuth Tokens saved to repository secrets!"
 
       - name: Debug - Show generated files
         run: |
@@ -129,6 +150,6 @@ jobs:
           echo "### Workflow Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Username**: ${{ secrets.X_USERNAME || 'Abhiram2k03' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Username**: ${{ secrets.X_USERNAME || 'gauri__gupta' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Max Bookmarks**: ${{ secrets.MAX_BOOKMARKS || '10' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Changes Detected**: ${{ steps.git-check.outputs.has_changes }}" >> $GITHUB_STEP_SUMMARY
