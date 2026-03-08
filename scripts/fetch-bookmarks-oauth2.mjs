@@ -76,24 +76,24 @@ async function fetchWithTokenRefresh(url, options = {}) {
   return response;
 }
 
-async function getUserIdFromUsername(_username) {
-  const url = `https://api.x.com/2/users/me?user.fields=id`;
-
+async function getUserIdFromUsername(username) {
+  const url = `https://api.x.com/2/users/by/username/${username}?user.fields=id`;
+  
   if (DEBUG) {
     console.log('\n🔍 Fetching user ID...');
     console.log('  URL:', url);
   }
-
+  
   const response = await fetchWithTokenRefresh(url, {
     headers: {
       'Content-Type': 'application/json',
     },
   });
-
+  
   if (DEBUG) {
     console.log('  Response Status:', response.status, response.statusText);
   }
-
+  
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
     console.error('\n❌ Failed to get user ID');
@@ -101,7 +101,7 @@ async function getUserIdFromUsername(_username) {
     console.error('  Error:', JSON.stringify(error, null, 2));
     throw new Error(`Failed to get user ID: ${response.status} ${JSON.stringify(error)}`);
   }
-
+  
   const data = await response.json();
   if (DEBUG) {
     console.log('  User ID:', data.data.id);
