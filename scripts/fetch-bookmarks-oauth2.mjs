@@ -24,10 +24,10 @@ const X_USERNAME = process.env.X_USERNAME || 'Abhiram2k03';
 const MAX_BOOKMARKS = parseInt(process.env.MAX_BOOKMARKS || '10');
 const DEBUG = process.env.DEBUG === 'true';
 
-if (!X_ACCESS_TOKEN) {
-  console.error('❌ Error: X_ACCESS_TOKEN is not set');
+if (!X_ACCESS_TOKEN || !X_REFRESH_TOKEN) {
+  console.error('❌ Error: X_ACCESS_TOKEN or X_REFRESH_TOKEN is not set');
   console.error('\nPlease run: npm run get-oauth2-token');
-  console.error('Then add the token to your .env file');
+  console.error('Then add both tokens to your .env file');
   process.exit(1);
 }
 
@@ -54,23 +54,86 @@ if (DEBUG) {
   console.log('═══════════════════════════════════════\n');
 }
 
-// Token refreshing is now handled externally before this script runs.
 /**
- * Make an API request using the pre-refreshed token.
- * Throws an explicit error if a 401 occurs, because it indicates the external refresh failed or wasn't run.
+ * Refresh the OAuth 2.0 access token using the refresh token
  */
-async function fetchWithTokenRefresh(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...options.headers,
-      Authorization: `Bearer ${X_ACCESS_TOKEN}`,
-    },
+async function refreshAccessToken() {
+  console.log('🔄 Refreshing access token...');
+  
+  const params = new URLSearchParams({
+    refresh_token: X_REFRESH_TOKEN,
+    grant_type: 'refresh_token',
   });
 
+  // Create Basic Auth header with client_id:client_secret
+  const credentials = Buffer.from(`${X_CLIENT_ID}:${X_CLIENT_SECRET}`).toString('base64');
+
+  try {
+    const response = await fetch('https://api.x.com/2/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': `Basic ${credentials}`,
+      },
+      body: params.toString(),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(`Failed to refresh token: ${response.status} ${JSON.stringify(error)}`);
+    }
+
+    const data = await response.json();
+    X_ACCESS_TOKEN = data.access_token;
+    
+    console.log('✅ Access token refreshed successfully');
+    console.log('ℹ️  New token expires in:', data.expires_in, 'seconds');
+    console.log('\n⚠️  Update your .env file with the new tokens:');
+    console.log(`X_ACCESS_TOKEN=${data.access_token}`);
+    if (data.refresh_token) {
+      console.log(`X_REFRESH_TOKEN=${data.refresh_token}`);
+    }
+    
+    // Write tokens to GitHub Actions output if available
+    if (process.env.GITHUB_OUTPUT) {
+      console.log('📝 Writing tokens to GitHub Output for secret rotation...');
+      appendFileSync(process.env.GITHUB_OUTPUT, `access_token=${data.access_token}\n`);
+      if (data.refresh_token) {
+        appendFileSync(process.env.GITHUB_OUTPUT, `refresh_token=${data.refresh_token}\n`);
+      }
+    }
+    
+    console.log('');
+    
+    return data.access_token;
+  } catch (error) {
+    console.error('❌ Failed to refresh access token:', error.message);
+    console.error('\nYou may need to re-authorize by running: npm run get-oauth2-token');
+    throw error;
+  }
+}
+
+/**
+ * Make an API request with automatic token refresh on 401 errors
+ */
+async function fetchWithTokenRefresh(url, options = {}) {
+  const makeRequest = async (token) => {
+    return fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  };
+
+  let response = await makeRequest(X_ACCESS_TOKEN);
+
+  // If we get a 401, try refreshing the token once
   if (response.status === 401) {
-    console.log('⚠️  Access token is invalid or expired.');
-    throw new Error('Access token expired. Please ensure tokens are refreshed before running this script.');
+    console.log('⚠️  Access token expired, refreshing...');
+    await refreshAccessToken();
+    response = await makeRequest(X_ACCESS_TOKEN);
   }
 
   return response;
@@ -224,7 +287,7 @@ async function main() {
       // Remove trailing t.co link (usually the link to the tweet itself or attached media)
       text = text.replace(/https:\/\/t\.co\/\w+\s*$/, '').trim();
       
-      const content = `${text} <a href='${tweetUrl}' target='_blank' rel='noreferrer'>[Link]</a>`;
+      const content = `<a href='${tweetUrl}' target='_blank' rel='noreferrer'>${text}</a>`;
       
       newNews.push({
         date: monthYear,
